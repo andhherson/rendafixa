@@ -1,0 +1,874 @@
+####################################################################################################################
+#### MODELO PARA CALCULO DE OPERAÇÕES DE RENDA FIXA
+####
+####
+####
+#### 2018-04-06: 
+#### - Acho melhor rodar todos os papeis para os ultimos anos e a partir desse dataframesao 
+####   usar sapply ou outros para calular os indicadores.
+#### - Antes de chegar no livro do Roge tem que implementar o livro do Berger
+####
+#### 2018-04-08:
+#### - criar uma função que importe ou calcule o VNA
+#### - to vendo que é melhor inverter a lógica do planejamento: é melhor calcular tudo pra cara papel
+####   do que particionar
+#### - para calcular o PU da LFT tem que calcular o VNA e pra isso tem que importar a SELIC Diária
+####   do BETS
+####
+####
+####
+####
+# PLANEJAMENTO:
+# 
+# I. Aplicação do MANUAL DE GESTÃO DE RENDA FIXA
+# Para Anbima e TD
+
+# 1.0 LFT
+  # 1.1 calcular PU
+  # 1.2 calcular TAXA
+  # 1.3 calcular DURATION
+  # 1.4 calcular DURATIONMOD
+  # 1.5calcular CONVEXIDADE
+
+# 2.0 LTN
+  # 2.1 calcular PU
+  # 2.2 calcular TAXA
+  # 2.3 calcular DURATION
+  # 2.4 calcular DURATIONMOD
+  # 2.5calcular CONVEXIDADE
+
+# 3.0 NTNP
+  # 3.1 calcular PU
+  # 3.2 calcular TAXA
+  # 3.3 calcular DURATION
+  # 3.4 calcular DURATIONMOD
+  # 3.5calcular CONVEXIDADE
+
+# 4.0 NTNF
+  # 4.1 calcular PU
+  # 4.2 calcular TAXA
+  # 4.3 calcular DURATION
+  # 4.4 calcular DURATIONMOD
+  # 4.5calcular CONVEXIDADE
+
+# 5.0 NTNB
+  # 5.1 calcular PU
+  # 5.2 calcular TAXA
+  # 5.3 calcular DURATION
+  # 5.4 calcular DURATIONMOD
+  # 5.5calcular CONVEXIDADE
+
+# f) calcular Imunização pela DURATION
+# 
+# g) calcular Imunização pelo BETA
+# 
+# h) calcular Imunização pela CONVEXIDADE
+
+
+
+####  II. PROJEÇÕES FUTURAS
+
+
+
+
+
+
+####################################################################################################################
+####                                                                                                               #
+####  AUTOR: ANDERSON FERREIRA                                                                                     #
+####                                                                                                               #
+####################################################################################################################
+
+  # setar no pc de casa, o R da problemas quando le o desktop.ini que o window gera
+
+
+    caminho = ('C:/Users/andersonferreira/Documents/TD')
+
+    # caminho = ('C:/Users/Anderson/Documents/R/TD')
+    
+    setwd(caminho)
+    
+    caminho
+
+
+  
+  
+  # install.packages('Rtools')
+  # #instalando bibliotecas
+  # install.packages('GetTDData')
+  # install.packages('curl')
+  # install.packages('rJava')
+  # install.packages('xlsxjars')
+  # install.packages('xlsx')
+  # install.packages('magrittr')
+  # install.packages('dplyr')
+  # install.packages('bizdays')
+  # install.packages('ggplot2')
+  # install.packages('GenomicRanges')
+  # install.packages("data.table", dependencies=TRUE)
+  # install.packages('plotly')
+  # install.packages('DT')
+  # install.packages('BETS')
+  # install.packages('zoo') 
+  # install.packages('dplyr')
+  # install.packages('rvest')
+  # install.packages('xml2')
+  # install.packages('jrvFinance')
+  # install.packages("RQuantLib")
+  # install.packages('fixedincome')
+  # install.packages('openxlsx')  
+  
+  
+  
+  
+  
+  
+  # chamando as bibliotecas
+    library(GetTDData)
+    library(curl)
+    library(rJava)
+    library(xlsxjars)
+    library(xlsx)
+    library(magrittr)
+    library(dplyr)
+    library(bizdays)
+    library(ggplot2)
+    library(data.table)
+    library(data.table)
+    library(plotly)
+    library(DT)
+    library(BETS)
+    library(zoo)
+    library(xml2)
+    library(rvest)
+    library(jrvFinance)
+    library(RQuantLib)
+    library(openxlsx)
+
+###################################################################################################################
+###################################################################################################################
+######### BD
+#########
+###################################################################################################################
+
+  #setando o calendario da Anbima como Default
+    bizdays.options$set(default.calendar="Brazil/ANBIMA")
+    cal <- create.calendar("Brazil/ANBIMA", holidaysANBIMA, weekdays=c("saturday", "sunday"))
+
+
+  # ESSA PARTE PODERÁ SER USADA PARA CRIAR A BD
+  # baixando os arquivos no TD
+  
+    download.TD.data(
+                      asset.codes =  NULL, 
+                      dl.folder = "TD Files", 
+                      do.clean.up = FALSE, 
+                      do.overwrite = FALSE,
+                      n.dl = 6
+                    )
+
+  # LENDO OS AQUIVOS TD IMPORTADOS E CRIANDO DATAFRAMES PARA CADA TIPO DE PAPEL 
+  # quando usar colS.to.import tem que colocar 1 pra data
+  # quando usar col.names tem que nomear a primera coluna de ref.date
+  # no dataframe cria sempre asset.code e matur.date
+  # mantive aqui pois facilitará futuramente pra gerar a BD
+  # Fonte alternativa: https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv
+  # Descrição: http://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/1a8eb2e3-4902-4a38-a1eb-6410f23d90de/download/Metadados-Taxa-dos-Titulos-Ofertados-pelo-Tesouro-Direto.pdf
+  
+  
+    LFT.BRUTO = read.TD.files(
+                                dl.folder = "TD Files",
+                                asset.codes = "LFT",
+                                cols.to.import = c(1,2,3,4,5,6),
+                                col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+                              )
+    
+    
+    
+    LTN.BRUTO = read.TD.files(
+                                dl.folder = "TD Files",
+                                asset.codes = "LTN",
+                                cols.to.import = c(1,2,3,4,5,6),
+                                col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+                              )
+    
+    
+    NTNB_BRUTO = read.TD.files(
+                                  dl.folder = "TD Files",
+                                  asset.codes = "NTN-B",
+                                  cols.to.import = c(1,2,3,4,5,6),
+                                  col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+                                )
+    
+    
+    NTNBP_BRUTO = read.TD.files(
+                                  dl.folder = "TD Files",
+                                  asset.codes = "NTN-B Principal",
+                                  cols.to.import = c(1,2,3,4,5,6),
+                                  col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+                                )
+    
+    
+    NTNF_BRUTO = read.TD.files(
+                                  dl.folder = "TD Files",
+                                  asset.codes = "NTN-F",
+                                  cols.to.import = c(1,2,3,4,5,6),
+                                  col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+                                )
+  
+
+
+  # BAIXANDO E LENDO A PLANILHA DE VNA DO TESOURO 
+  # precisei nomear a coluna de datas como 'dia' pois precisei criar uma coluna com dia útil pra dar match na data
+    download.file("http://www.tesouro.gov.br/documents/10180/378339/DP_Valores_Nominais_NTNB.xls", destfile = paste(caminho,'/DP_Valores_Nominais_NTNB.xls',sep=""), mode='wb')
+    
+    VNA_IPCAm = read_xls(paste(caminho,'/DP_Valores_Nominais_NTNB.xls',sep=""),sheet = 1, skip = 9, col_names = T)    
+    colnames(VNA_IPCAm) = c("dia", "VNA_IPCA")
+    VNA_IPCAm$date = following(VNA_IPCAm$dia)
+
+
+
+
+  # importar a SECLI diária do BETS para o SQL
+  # http://bibliotecadigital.fgv.br/dspace/bitstream/handle/10438/18172/Brazilian_Economic_Time_Series_BETS_R_package.pdf?sequence=1&isAllowed=y 
+  # BETSsearch(description = 'IPCA-15')
+  # BETS.addin_pt()
+  # BETSsearch(description = "IPCA")
+  # BETSget(11)
+   
+  
+  # IMPORTANDO A SELIC DIARIA COM O BETS E LIMPANDO limpando os dados antes da data base
+    SELIC.DIARIA =BETSget(code = 11, data.frame=TRUE)
+    INI=which(SELIC.DIARIA$date=="2000-07-03")-1
+    SELIC.DIARIA=SELIC.DIARIA[-(1:INI),]
+    colnames(SELIC.DIARIA) = c("date", "SELIC")
+  
+  
+  # PEGANDO A META DA SELIC DIARIA E CALCULANDO PRA 1 DIA  
+    SELIC.META = BETSget(code = 432, data.frame=T)
+    SELIC.META$DIARIA = (SELIC.META$value/100+1)^(1/252)
+  
+  
+  # PEGANDO O CDI DIARIO  
+    CDI.DIARIO = BETSget(code = 12, data.frame=T)
+    colnames(CDI.DIARIO) = c("date", "CDI")
+  
+  # PEGANDO O IPCA-15
+    IPCA_15 = BETSget(code = 7478, data.frame=T)
+    colnames(IPCA_15) = c("date", "IPCA")
+
+
+    
+    
+  # DATAFRAME TESTE
+    LFT.TESTE = tail(LFT)
+    LTN.TESTE = tail(LTN)
+    NTNB.TESTE = tail(NTNB)
+    NTNBP.TESTE = tail(NTNBP)
+    NTNF.TESTE = tail(NTNF)
+    
+    #parcial
+    # write.xlsx(NTNB.TESTE, 'G:/Meu Drive/R/R_lab/PARCIAIS/PARCIAL_NTNB.xlsx', row.names = F)
+    
+    
+###################################################################################################################
+###################################################################################################################    
+#### WEB SCRAPING
+
+    PRO = read_html("http://www.anbima.com.br/pt_br/informar/estatisticas/precos-e-indices/projecao-de-inflacao-gp-m.htm")      
+    PRO %>% html_node("both strong") %>% html_text() %>% as.numeric()
+    PRO %>% html_node("header") %>% html_text()
+    
+    
+    
+    movie = read_html("https://www.imdb.com/title/tt1431045/")    
+    movie %>% html_node("div time") %>% html_text()         
+    movie %>% html_node("a") %>% html_text() %>% as.numeric()          
+
+
+
+
+###################################################################################################################
+###################################################################################################################    
+#### FUNÇÕES A SEREM UTILIZADAS
+
+  # TRUNCAR CASAS DECIMAIS
+    TRUNCAR = function(numero, casas){
+                                        return(trunc(numero*10^casas)/10^casas)
+                                      }
+
+
+
+  
+
+
+
+
+
+###################################################################################################################
+###################################################################################################################
+
+####   I. APLICACAO do MANUAL DE GESTÃO DE RENDA FIXA
+
+# PARA ANBIMA E TD
+    
+    
+# 1: LFT ( http://www.tesouro.gov.br/documents/10180/410323/LFT_novidades.pdf )
+    
+    # uma unidade de LFT equivale a R$ 1.000,00 em 1° de julho de 2000
+    
+    
+      LFT = LFT.BRUTO
+      colnames(LFT) = c("date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base", "Codigo", "Vencimento")
+      
+      
+    # 1.1: CALCULANDO O VNA
+    
+    # "Observe que o valor é truncado na sexta casa decimal."
+    
+      L=lag(SELIC.DIARIA$SELIC)
+      LFT.VNA = ifelse(SELIC.DIARIA$date=="2000-07-03",1000,L/100+1)
+      LFT.VNA = TRUNCAR(cumprod(LFT.VNA), 6)
+      SELIC.DIARIA$VNA=LFT.VNA
+      LFT = merge(LFT, SELIC.DIARIA, by = 'date')
+      
+      
+      
+    # 1.2: CALCULANDO O PRAZO
+    
+    # a funcao bizdays nao aceita dataframe
+    # tem que somar 1 para se apoximar do prazo da anbima, no TD é normal
+    
+      PRAZO.LFT = c(bizdays(LFT$date,LFT$Vencimento))
+      LFT$PRAZO=PRAZO.LFT
+      
+      
+      
+    # 1.3: CALCULANDO A COTACAO USANDO A TX DE VENDA
+    
+    # http://www.tesouro.gov.br/documents/10180/410323/LFT_novidades.pdf
+    # "O valor da cotação é truncado na quarta casa decimal."
+    # se a taxa é positiva temos deságio e ele será adicionado à  variação da LFT 
+    
+      LFT.COTACAO = (100 / (1+ LFT$Taxa.Venda)^(PRAZO.LFT/252))
+      LFT$COTACAO=TRUNCAR(LFT.COTACAO,4)
+      
+      
+      
+    # 1.4: CALCULANDO O PU
+    
+    # http://www.tesouro.gov.br/documents/10180/410323/LFT_novidades.pdf
+    # "Basta realizar o truncamento5 em 2 casas decimais do valor encontrado"
+    #  PREÇO = VNA PROJETADO * COTAÇÃO
+    #  VNA PROJETADO = VNA * META SELIC
+    #  O PU DE VENDA DO TD É PARA LIQUDAÇÃO D+1, O PU BASE É PARA D0
+    
+      LFT = merge(LFT, SELIC.META, by ='date')
+      LFT$PU.VENDA  = TRUNCAR( LFT$VNA * (LFT$COTACAO/100) * (LFT$DIARIA), 6 )
+      
+      
+      
+    # 1.5: CALCULANDO A TAXA DE VENDA
+    
+    #tem que acertar as casas decimais pra bater ceritnho
+    
+     LFT$TAXA.VENDA = TRUNCAR( (100 / LFT$COTACAO)^(252/LFT$PRAZO) - 1 ,8)
+    
+    
+    
+    # 1.6: AS LFTs TEM DURATION = 1 e CONVEXIDADE = 0
+    
+    
+    
+    # Selecionando maturidades
+    # which(LFT$matur.date == "2004-01-21")
+    # a = LFT[which(LFT$ref.date == "2018-04-06"),]
+    # names(a)
+
+  
+    
+    
+    
+
+# 2: LTN ( http://www.tesouro.gov.br/documents/10180/410323/LTN_novidades.pdf )
+
+    # CHAMANDO E DEFININDO O DATAFRAME DAS LTN
+    
+    LTN = LTN.BRUTO
+    colnames(LTN) = c("date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base", "Codigo", "Vencimento")
+    
+    
+    
+    # 2.1: CALCULANDO O PRAZO
+    # a funcao bizdays nao aceita dataframe
+    # tem que somar 1 para se apoximar do prazo da anbima, no TD é normal
+    
+    LTN$Prazo = c( bizdays(LTN$date, following(LTN$Vencimento) ) )
+    
+    
+    
+    
+    # 2.2: CALCULANDO OS PONTOS (LAMOSA BERGER)
+    # http://www.tesouro.gov.br/documents/10180/410323/LTN_novidades.pdf
+    
+    LTN = merge(LTN, CDI.DIARIO, by ='date')
+    LTN$Pontos = LTN$Taxa.Venda - LTN$CDI
+    
+    
+    # 2.3: CALCULANDO %CDI (LAMOSA BERGER)
+    
+    LTN$'%CDI' =  ( ((1+LTN$Taxa.Venda)^(1/252)-1) / (LTN$CDI/100) ) * 100
+    
+    
+    
+    # 2.4: CALCULANDO O PU
+    # "Cabe ressaltar que os Preços dos títulos negociados no Tesouro Direto são truncados4 na segunda casa decimal."
+    #  A partir de 03/08/2009 o PU dessa formula abaixo passa a bater com a venda mas antes batia com PU Base
+    
+    
+    LTN$PU.VENDA = TRUNCAR ( 1000 / (1+ LTN$Taxa.Venda)^(LTN$Prazo/252) , 2 )       
+    
+    
+    # 2:5: CALCULANDO A DURATION EM ANOS
+    
+    LTN$Duration = TRUNCAR (LTN$Prazo, 2)
+    
+    
+    # 2.6: CALCULANDO A DURATIOn MODIFICADA EM ANOS
+    
+    LTN$DurationMod = TRUNCAR(LTN$Duration/(1+LTN$Taxa.Venda),2)
+    
+    
+    # 2.7: CALCULANDO A CONVEXIDADE
+    
+    LTN$Convexidade = ((LTN$Prazo/252)^2 + LTN$Prazo/252) / (1+LTN$Taxa.Venda)^2
+ 
+    
+    # 2.8: CALCULANDO A TAXA
+    
+    LTN$Taxa = ( (1000 / LTN$PU.Venda) ^ (252/LTN$Prazo) - 1)
+    
+
+
+
+# 3: NTNBP ( http://www.tesouro.fazenda.gov.br/documents/10180/410323/NTN-B%20principal_novidades.pdf )
+
+    # CHAMANDO E DEFININDO O DATAFRAME DAS NTNBP
+    
+      NTNBP = NTNBP_BRUTO
+      colnames(NTNBP) = c("date","Taxa_Compra","Taxa_Venda","PU_Compra","PU_Venda","PU_Base", "Codigo", "Vencimento")
+    
+    
+    
+    # 3.1: CALCULANDO O PRAZO
+      # a funcao bizdays nao aceita dataframe
+      # tem que somar 1 para se apoximar do prazo da anbima, no TD é normal
+      
+      NTNBP$Prazo = c( bizdays(NTNBP$date, following(NTNBP$Vencimento) ) )
+    
+    
+    # 3.2: CALCULANDO A COTAÇÃO   
+    
+      NTNBP$Cotacao_Venda = TRUNCAR ( 100 / (1+NTNBP$Taxa_Venda)^(NTNBP$Prazo/252), 4 )  
+    
+    
+    # 3.3: CALCULANDO O VNA
+      # "VNA = R$ 1.000,00 ∗ fator	de	variação	do	IPCA	entre	15/07/2000 (1.614,62)	e	o	dia	15	do	mês	anterior" mas na formula usa 15/06/2000
+    
+    # 3.3.1 VNA projetado = ( VNADoUltimoDia15 * IPCAProjetado ) ^ (n dias entre liquidacao e ultimo dia 15 / n dias entre ultimo dia 15 e proximo 15)
+      NTNBP$VNA_PROJ = ( NTNBP$PU_Base / (NTNBP$Cotacao_Venda/100) )
+      
+
+    
+    
+    # 3.3.2 PROJECAO INFLACAO
+    
+    # 3.3.3 VNA DO DIA
+    
+    
+    # NTNBP$VNA = ifelse(NTNBP$date==following(VNA_IPCA15m$date), 1,0) 
+    
+    
+    # 3.4: CALCULANDO O PU
+      # "Cabe ressaltar que os Preços dos títulos negociados no Tesouro Direto são truncados4 na segunda casa decimal."
+    
+    
+      NTNBP$PU.VENDA = TRUNCAR ( NTNBP$VNA_PROJ * (NTNBP$Cotacao_Venda/100) , 2 )       
+    
+    
+    # 3.5: CALCULANDO A DURATION EM ANOS
+    
+      NTNBP$Duration = TRUNCAR (NTNBP$Prazo / 252, 2)
+    
+    
+    # 3.6: CALCULANDO A DURATION MODIFICADA EM ANOS
+    
+      NTNBP$DurationMod = TRUNCAR(NTNBP$Duration/(1+NTNBP$Taxa_Venda),2)
+    
+    
+    # 3.7: CALCULANDO A CONVEXIDADE (pg 94 do Roge)
+    
+      NTNBP$Convexidade = ((NTNBP$Prazo/252)^2 + NTNBP$Prazo/252) / (1+NTNBP$Taxa_Venda)^2
+      
+    
+    # 3.8: CALCULANDO A TAXA
+      
+      NTNBP$TAXA = ( ( 100 / (NTNBP$Cotacao_Venda) )^(252/NTNBP$Prazo) ) - 1
+      
+
+
+
+
+# 4: NTNF (http://www.tesouro.gov.br/documents/10180/410323/NTN-F_novidades.pdf)
+    
+    
+    # CHAMANDO E DEFININDO O DATAFRAME DAS NTNBP
+    
+      NTNF = NTNF_BRUTO
+      colnames(NTNF) = c("date","Taxa_Compra","Taxa_Venda","PU_Compra","PU_Venda","PU_Base", "Codigo", "Vencimento")
+    
+    
+    
+    # 4.1 CALCULANDO O PRAZO
+      # a funcao bizdays nao aceita dataframe
+      # tem que somar 1 para se apoximar do prazo da anbima, no TD é normal
+      
+      NTNF$Prazo = c( bizdays(NTNF$date, following(NTNF$Vencimento) ) )
+    
+    
+    # 4.2 CALCULANDO A COTAÇÃO   
+    
+      NTNF$Cotacao_Venda = TRUNCAR ( 100 / (1+NTNF$Taxa_Venda)^(NTNF$Prazo/252), 4 )  
+    
+    
+    
+    # 4.3 CALCULANDO O PU
+      # "Cabe ressaltar que os Preços dos títulos negociados no Tesouro Direto são truncados4 na segunda casa decimal."
+      # Tempo de calculo para 16k linhas: 5min
+      # PMT = 48,80885 i = 4,881
+    
+      # funcao criada
+    
+      F = function(data_ref, maturidade, yield){
+        data_coupon = following(coupons.dates(settle = data_ref, mature = maturidade, freq = 2))
+        du = bizdays(data_ref, data_coupon)
+        vf = ifelse(data_coupon==following(maturidade),1048.8089, 48.8089) 
+        vp = ( (vf/(1+yield)^(du/252)) )
+        TRUNCAR(sum(vp),2) }     
+      
+      PU_NTNF = function(data_ref,maturidade,yield){
+                                                      mapply(F, data_ref, maturidade,yield)
+                                                    }
+      
+      
+      NTNF$PU = PU_NTNF(NTNF$date, NTNF$Vencimento, NTNF$Taxa_Venda)
+      tail(NTNF$PU)
+
+  
+    # 4.4 CALCULANDO A TAXA
+    
+      # TAXA DE NTN-F  
+      
+        T = function(data_ref, maturidade, pu){
+                                                  dates =  following(coupons.dates(settle = data_ref, mature = ,maturidade) )
+                                                  bsy =  bizdays(data_ref,dates)/252
+                                                  cf = ifelse(dates==following(maturidade),1048.8089, 48.8089) 
+                                                  irr( cf=c(-pu,cf), cf.t=c(0,bsy) )
+                                                }
+        
+        TAXA_NTNF = function(data_ref, maturidade, pu){
+                                                        mapply(T, data_ref, maturidade, pu)
+                                                      }
+        
+        
+        NTNF$Taxa = TAXA_NTNF(NTNF$date, NTNF$Vencimento, NTNF$PU_Venda)
+        
+        NTNF.TESTE$Taxa = TAXA_NTNF(NTNF.TESTE$date, NTNF.TESTE$Vencimento, NTNF.TESTE$PU_Venda)
+      
+        
+ 
+    
+    # 4.5 CALCULANDO A DURATION EM DIAS (na LTN está em dias)
+    
+    
+        D = function(data_ref, maturidade, yield){
+                                      data_coupon = following(coupons.dates(settle = data_ref, mature = maturidade, freq = 2))
+                                      du = bizdays(data_ref, data_coupon)
+                                      vf = ifelse(data_coupon==following(maturidade),1048.8089, 48.8089) 
+                                      vp = ( (vf/(1+yield)^(du/252)) )
+                                      dr =  (vp / sum(vp))*du
+                                      dur = TRUNCAR(sum(dr),2)
+                                      }     
+        
+        DURATION_NTNF = function(data_ref, maturidade, yield){
+                                                                mapply(D, data_ref, maturidade, yield)
+                                                              }
+
+        
+        NTNF$DURATION = DURATION_NTNF(NTNF$date, NTNF$Vencimento, NTNF$Taxa_Venda)
+        
+        
+    # 4.6 CALCULANDO A DURATION MODIFICADA EM DIAS
+        
+        NTNF$DURATION_MODIFICADA = TRUNCAR(NTNF$DURATION/(1+NTNF$Taxa_Venda),2)
+        
+        
+        
+    # 4.7 CALCULANDO A CONVEXIDADE    
+        
+        C = function(data_ref, maturidade, yield){
+                                    data_coupon = following(coupons.dates(settle = data_ref, mature = maturidade, freq = 2))
+                                    du = bizdays(data_ref, data_coupon)
+                                    vf = ifelse(data_coupon==following(maturidade),1048.8089, 48.8089)
+                                    parte = TRUNCAR(sum( (du/252)*((du/252)+1)*vf / (1+yield)^(du/252) ),2)
+                          
+                                  }          
+
+        CONVEXIDADE_NTNF = function(data_ref, maturidade, yield){
+                                                                  mapply(C, data_ref, maturidade, yield)
+                                                                 }
+        
+        
+        NTNF$CONVEXIDADE = CONVEXIDADE_NTNF(NTNF$date, NTNF$Vencimento, NTNF$Taxa_Venda)* (1/NTNF$PU_Base) * (1/(1+NTNF$Taxa_Venda))^2
+        
+        # NTNF.TESTE$CONVEXIDADE = CONVEXIDADE_NTNF(NTNF.TESTE$date, NTNF.TESTE$Vencimento, NTNF.TESTE$Taxa_Venda)* (1/NTNF.TESTE$PU_Base) * (1/(1+NTNF.TESTE$Taxa_Venda))^2
+        
+        
+    # 4.7 CALCULANDO A VARIACAO PRA +1PP NA TAXA    
+        
+        NTNF$UMPP = NTNF$DURATION_MODIFICADA * 0.01 + 0.5 * NTNF$CONVEXIDADE * (0.1)^2
+        
+        NTNF.TESTE$UMPP = NTNF.TESTE$DURATION_MODIFICADA * 0.01 + 0.5 * NTNF.TESTE$CONVEXIDADE * (0.1)^2
+        
+  
+  
+  
+# 5: NTNB (http://www.tesouro.gov.br/documents/10180/410323/NTN-B_novidades.pdf)
+      
+
+    # CHAMANDO E DEFININDO O DATAFRAME DAS NTNBP
+        
+      NTNB = NTNB_BRUTO
+      colnames(NTNB) = c("date","Taxa_Compra","Taxa_Venda","PU_Compra","PU_Venda","PU_Base", "Codigo", "Vencimento")
+        
+        
+    # 5.1: CALCULANDO O PRAZO
+    # a funcao bizdays nao aceita dataframe
+    # tem que somar 1 para se apoximar do prazo da anbima, no TD é normal
+      
+      NTNB$Prazo = c( bizdays(NTNB$date, following(NTNB$Vencimento) ) )    
+         
+       
+    # 5.2 CALCULANDO A COTAÇÃO   
+      
+      
+      COT_NTNB = function(data_ref, maturidade, yield){
+        data_coupon = following(coupons.dates(settle = data_ref, mature = maturidade, freq = 2))
+        du = bizdays(data_ref, data_coupon)
+        vf = ifelse(data_coupon==following(maturidade),(1.02956301), 0.02956301) 
+        vp = ( (vf/(1+yield)^(du/252)) )
+        cot = TRUNCAR(sum(vp),6)
+      }  
+      
+      COTACAO_NTNB = function(data_ref, maturidade, yield){
+        mapply(COT_NTNB, data_ref, maturidade, yield)
+      }      
+      
+      NTNB$COTACAO_NTNB = COTACAO_NTNB(NTNB$date, NTNB$Vencimento, NTNB$Taxa_Venda)
+      
+      # NTNB.TESTE$COTACAO_NTNB = COTACAO_NTNB(NTNB.TESTE$date, NTNB.TESTE$Vencimento, NTNB.TESTE$Taxa_Venda)      
+      NTNB.TESTE$COTACAO_NTNB = COTACAO_NTNB(NTNB.TESTE$date, NTNB.TESTE$Vencimento, NTNB.TESTE$Taxa_Venda)
+
+
+    # 5.3: CALCULANDO O VNA
+      # "VNA = R$ 1.000,00 ∗ fator	de	variação	do	IPCA	entre	15/07/2000 (1.614,62)	e	o	dia	15	do	mês	anterior" mas na formula usa 15/06/2000
+        
+      # 5.3.1 VNA projetado = ( VNADoUltimoDia15 * IPCAProjetado ) ^ (n dias entre liquidacao e ultimo dia 15 / n dias entre ultimo dia 15 e proximo 15)
+      
+        NTNB$VNA_PROJ = ( NTNB$PU_Base / (NTNB$COTACAO_NTNB) )
+        
+        # NTNB.TESTE$VNA_PROJ = ( NTNB.TESTE$PU_Base / (NTNB.TESTE$COTACAO_NTNB) )
+      
+      #5.3.2 PROJECAO INFLACAO
+      
+      
+         
+          
+        
+
+      
+    # 5.4: CALCULANDO O PU
+      # "Cabe ressaltar que os Preços dos títulos negociados no Tesouro Direto são truncados4 na segunda casa decimal."
+      
+      
+        NTNB$PU.VENDA = TRUNCAR ( NTNB$VNA_PROJ * (NTNB$Cotacao_Venda/100) , 2 )          
+
+      
+    
+    # 5.2 calcular TAXA
+      
+      T = function(data_ref, maturidade, pu){
+        dates =  following(coupons.dates(settle = data_ref, mature = ,maturidade) )
+        bsy =  bizdays(data_ref,dates)/252
+        cf = ifelse(dates==following(maturidade),(1.02956301), 0.02956301) 
+        irr( cf=c(-pu,cf), cf.t=c(0,bsy) )
+      }
+      
+      TAXA_NTNB = function(data_ref, maturidade, pu){
+        mapply(T, data_ref, maturidade, pu)
+      }
+      
+      
+      NTNB$Taxa = TAXA_NTNB(NTNB$date, NTNB$Vencimento, NTNB$COTACAO_NTNB)
+      
+      # NTNB.TESTE$Taxa = TAXA_NTNB(NTNB.TESTE$date, NTNB.TESTE$Vencimento, NTNB.TESTE$COTACAO_NTNB)
+      
+      
+      
+    # 5.3 calcular DURATION
+      
+      D = function(data_ref, maturidade, yield){
+                                                  data_coupon = following(coupons.dates(settle = data_ref, mature = maturidade, freq = 2))
+                                                  du = bizdays(data_ref, data_coupon)
+                                                  vf = ifelse(data_coupon==following(maturidade),(1.02956), 0.02956) 
+                                                  vp = ( (vf/(1+yield)^(du/252)) )
+                                                  dr =  (vp / sum(vp))*du
+                                                  dur = TRUNCAR(sum(dr),4)
+                                                }     
+      
+      DURATION_NTNB = function(data_ref, maturidade, yield){
+                                                              mapply(D, data_ref, maturidade, yield)
+                                                            }
+      
+      
+      NTNB$DURATION = DURATION_NTNB(NTNF$date, NTNB$Vencimento, NTNB$Taxa_Venda)
+ 
+      # NTNB.TESTE$DURATION = DURATION_NTNB(NTNB.TESTE$date, NTNB.TESTE$Vencimento, NTNB.TESTE$Taxa_Venda)     
+      
+      
+
+    # 5.4 calcular DURATIONMOD
+      
+      
+      NTNB$DURATION_MODIFICADA = TRUNCAR(NTNB$DURATION/(1+NTNB$Taxa_Venda),2)
+      
+      NTNB.TESTE$DURATION_MODIFICADA = TRUNCAR(NTNB.TESTE$DURATION/(1+NTNB.TESTE$Taxa_Venda),2)
+      
+      
+      
+    # 5.5 calcular CONVEXIDADE (PG 96 ROGE)       
+      
+      
+      C = function(data_ref, maturidade, yield){
+        data_coupon = following(coupons.dates(settle = data_ref, mature = maturidade, freq = 2))
+        du = bizdays(data_ref, data_coupon)
+        vf = ifelse(data_coupon==following(maturidade),(1.02956), 0.02956)
+        parte = TRUNCAR(sum( (du/252)*((du/252)+1)*vf / (1+yield)^(du/252) ),2)
+        
+      }          
+      
+      CONVEXIDADE_NTNB = function(data_ref, maturidade, yield){
+        mapply(C, data_ref, maturidade, yield)
+      }
+      
+      
+      NTNF$CONVEXIDADE = CONVEXIDADE_NTNB(NTNB$date, NTNB$Vencimento, NTNB$Taxa_Venda)* (1/NTNB$PU_Base) * (1/(1+NTNB$Taxa_Venda))^2
+      
+      # NTNB.TESTE$CONVEXIDADE = CONVEXIDADE_NTNB(NTNB.TESTE$date, NTNB.TESTE$Vencimento, NTNB.TESTE$Taxa_Venda)* (1/NTNB.TESTE$COTACAO_NTNB) * (1/(1+NTNB.TESTE$Taxa_Venda))^2
+      # NTNB.TESTE$CONVEXIDADE = CONVEXIDADE_NTNB(NTNB.TESTE$date, NTNB.TESTE$Vencimento, 0.057466)* (1/NTNB.TESTE$COTACAO_NTNB) * (1/(1+0.057466))^2
+      
+      
+      
+    # 5.6 CALCULANDO A VARIACAO PRA +1PP NA TAXA 
+      ''
+      NTNB.TESTE$UMPP = NTNB.TESTE$DURATION_MODIFICADA * 0.01 + 0.5 * NTNB.TESTE$CONVEXIDADE * (0.1)^2
+      
+      
+      
+      asset.codes <- 'LTN'   # Identifier of assets 
+      maturity <- '010119'  # Maturity date as string (ddmmyy)
+      
+      my.df <- read.TD.files(asset.codes = asset.codes,
+                             maturity = maturity)
+      
+      
+
+      
+      
+      
+  
+      
+      
+      
+      
+      
+      
+      
+          
+# TESTANDO      
+
+      
+      LTN19 = read.TD.files(
+        dl.folder = "TD Files",
+        asset.codes = "LTN",
+        maturity = '010119',
+        cols.to.import = c(1,2,3,4,5,6),
+        col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+      )
+      
+      
+      
+      LTN21 = read.TD.files(
+        dl.folder = "TD Files",
+        asset.codes = "LTN",
+        maturity = '010121',
+        cols.to.import = c(1,2,3,4,5,6),
+        col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+      )
+      
+      LTN25 = read.TD.files(
+        dl.folder = "TD Files",
+        asset.codes = "LTN",
+        maturity = '010123',
+        cols.to.import = c(1,2,3,4,5,6),
+        col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+      )
+      
+
+      
+      
+      LTN = read.TD.files(
+        dl.folder = "TD Files",
+        asset.codes = "LTN",
+        maturity = c('010119','010121','010123'),
+        cols.to.import = c(1,2,3,4,5,6),
+        col.names = c("ref.date","Taxa.Compra","Taxa.Venda","PU.Compra","PU.Venda","PU.Base")
+      )
+      
+      
+      
+      p <- ggplot(data = LTN, aes(x = as.Date(ref.date), y = PU.Compra, color = asset.code))
+      p <- p + geom_line() + scale_x_date() + labs(title = '', x = 'Dates', y = 'Prices' )
+      print(p)
+      
+      
+      
+      
+      
+      
+      
+# GRAFICO      
+      library(GetTDData)
+      
+      df.yield = get.yield.curve() 
+      str(df.yield)
+      
+      
+      library(ggplot2)
+      
+      aa = ggplot(df.yield, aes(x=ref.date, y = value) ) +
+        geom_line(size=1) + geom_point() + facet_grid(~type, scales = 'free') + 
+        labs(title = paste0('The current Brazilian Yield Curve '),
+             subtitle = paste0('Date: ', df.yield$current.date[1]))
+      print(aa)
+      
