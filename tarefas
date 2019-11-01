@@ -1,0 +1,29 @@
+###############################################################################
+###                        GERANDO OS RELATORIOS                            ###
+###############################################################################  
+
+# .rs.restartR()
+# rm(list=ls())
+
+# detach("package:lubridate", unload = TRUE)
+
+# baixa os PUs do TD e mostra na tela pra atualizar a planilha indices_felipe
+    source('G:/Meu Drive/Renda Fixa/CODES/NTNB.R')
+
+# baixa as planilhas do TD e da Anbima
+    source('G:/Meu Drive/Renda Fixa/CODES/precificacao.R')
+
+# busca no SQL e gera planilha com a rentabilidade dos ultimos 21 pregoes das carteiras (planilha "cotacoes")
+    source('G:/Meu Drive/Renda Fixa/CODES/BCARTE.R')
+
+# gera pdf com todas as rentabilidades do mes de cada cliente (pasta relatorios / extrato / RJI_Relatorio Evol Rent)
+    # source('Z:/Felipe/rji-reports/R/AcompanhaRentMes.R')
+    source('G:/Meu Drive/Renda Fixa/CODES/AcompanhaRentMesAnderson.R')
+
+# gera pdf com rentabilidade do dia, mes, ano e 12m das carteiras (G:\Meu Drive\Arquivos Compartilhados\RELATORIOS\Extrato\
+    # source('Z:/Felipe/rji-reports/R/PLsobGestao_Felipe.R', encoding = 'UTF-8')
+    source('G:/Meu Drive/Renda Fixa/CODES/PLsobGestao_FelipeAnderson.R', encoding = 'UTF-8')
+
+# gera pdf com a carteira de cada cliente (G:\Meu Drive\Arquivos Compartilhados\RELATORIOS\Extrato\
+    source("Z:/Felipe/rji-reports/R/Global_felipe.R", encoding = 'UTF-8')
+    source("G:/Meu Drive/Renda Fixa/CODES/Global_felipeAnderson.R", encoding = 'UTF-8')
